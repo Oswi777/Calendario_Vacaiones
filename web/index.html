@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Vacaciones – Tablero Planta</title>
+  <link rel="stylesheet" href="css/styles.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<header>
+  <h1>Vacaciones</h1>
+  <div class="controls">
+    <select id="f_planta">
+      <option value="">Todas</option>
+      <option>Planta 1</option>
+      <option>Planta 3</option>
+    </select>
+    <input id="q" placeholder="# o nombre" />
+    <a class="admin-link" href="admin.html" target="_blank">Admin</a>
+  </div>
+</header>
+
+<section class="weeks">
+  <div class="week">
+    <h2 id="lbl_w1">Semana actual</h2>
+    <div id="grid_w1" class="grid7"></div>
+  </div>
+  <div class="week">
+    <h2 id="lbl_w2">Semana siguiente</h2>
+    <div id="grid_w2" class="grid7"></div>
+  </div>
+</section>
+
+<script src="js/util.js"></script>
+<script src="js/api.js"></script>
+<script src="js/calendar.js"></script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Admin – Vacaciones</title>
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <header>
+        <h1>Admin Vacaciones</h1>
+    </header>
+
+    <main class="admin">
+        <section class="card">
+            <h3>Importar Excel/CSV</h3>
+            <form id="form-import">
+                <input type="file" id="file" accept=".xlsx,.xls,.csv" required />
+                <button type="submit">Importar</button>
+            </form>
+            <pre id="import-log"></pre>
+            <!-- ...encabezado igual... -->
+            <p class="help">
+                Formato mínimo (otras columnas se ignoran): <b>Inicial</b>, <b>Final</b>, <b>#</b>, <b>Nombre</b>,
+                <b>Gozo</b>, <b>Planta</b>.
+                Si faltan Gozo/Planta: Gozo=null, Planta se asigna automáticamente.
+            </p>
+            <!-- ...resto igual... -->
+
+        </section>
+
+        <section class="card">
+            <h3>Alta manual</h3>
+            <form id="form-manual">
+                <div class="row">
+                    <input name="numero_emp" placeholder="# empleado" required />
+                    <input name="nombre" placeholder="Nombre completo" required />
+                </div>
+                <div class="row">
+                    <select name="planta" required>
+                        <option>Planta 1</option>
+                        <option>Planta 3</option>
+                    </select>
+                    <select name="turno">
+                        <option value="">(sin turno)</option>
+                        <option>T1</option>
+                        <option>T2</option>
+                        <option>T3</option>
+                    </select>
+                </div>
+                <div class="row">
+                    <input name="fecha_inicial" type="date" required />
+                    <input name="fecha_final" type="date" required />
+                </div>
+                <div class="row">
+                    <input name="tipo" placeholder="Tipo" value="Gozo de Vacaciones" />
+                    <input name="gozo" type="number" step="0.5" placeholder="Gozo (opcional)" />
+                </div>
+                <button type="submit">Guardar</button>
+                <pre id="manual-log"></pre>
+            </form>
+        </section>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+
+</html>
