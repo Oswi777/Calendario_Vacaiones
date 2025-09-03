@@ -1,73 +1,127 @@
 <!doctype html>
 <html lang="es">
-
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Admin – Vacaciones</title>
-    <link rel="stylesheet" href="css/styles.css" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Panel Admin – Vacaciones</title>
+  <link rel="stylesheet" href="css/styles.css"/>
+  <!-- Forzar cursor visible aquí por si hay cache del CSS -->
+  <style> body{cursor:auto} </style>
 </head>
-
 <body>
-    <header>
-        <h1>Admin Vacaciones</h1>
-    </header>
+  <header>
+    <h1>Panel de Administración</h1>
+    <div class="controls">
+      <a class="admin-link" href="index.html">← Tablero</a>
+    </div>
+  </header>
 
-    <main class="admin">
-        <section class="card">
-            <h3>Importar Excel/CSV</h3>
-            <form id="form-import">
-                <input type="file" id="file" accept=".xlsx,.xls,.csv" required />
-                <button type="submit">Importar</button>
-            </form>
-            <pre id="import-log"></pre>
-            <!-- ...encabezado igual... -->
-            <p class="help">
-                Formato mínimo (otras columnas se ignoran): <b>Inicial</b>, <b>Final</b>, <b>#</b>, <b>Nombre</b>,
-                <b>Gozo</b>, <b>Planta</b>.
-                Si faltan Gozo/Planta: Gozo=null, Planta se asigna automáticamente.
-            </p>
-            <!-- ...resto igual... -->
+  <div class="tabs">
+    <button id="tabEmp" class="active" type="button">Empleados</button>
+    <button id="tabVac" type="button">Vacaciones</button>
+  </div>
 
-        </section>
+  <div class="admin-wrap">
+    <!-- Lista -->
+    <div class="card">
+      <div id="boxEmp">
+        <h3>Empleados</h3>
+        <div class="row">
+          <input id="emp_q" placeholder="Buscar por # o nombre" />
+          <select id="emp_planta"><option value="">Todas</option><option>Planta 1</option><option>Planta 3</option></select>
+          <select id="emp_turno"><option value="">Turno</option><option>T1</option><option>T2</option><option>T3</option></select>
+          <button id="emp_buscar" type="button">Buscar</button>
+          <button id="emp_prev" type="button">«</button>
+          <span id="emp_page"></span>
+          <button id="emp_next" type="button">»</button>
+        </div>
+        <table>
+          <thead><tr><th>#</th><th>Nombre</th><th>Planta</th><th>Turno</th><th></th></tr></thead>
+          <tbody id="emp_tbody"></tbody>
+        </table>
+      </div>
 
-        <section class="card">
-            <h3>Alta manual</h3>
-            <form id="form-manual">
-                <div class="row">
-                    <input name="numero_emp" placeholder="# empleado" required />
-                    <input name="nombre" placeholder="Nombre completo" required />
-                </div>
-                <div class="row">
-                    <select name="planta" required>
-                        <option>Planta 1</option>
-                        <option>Planta 3</option>
-                    </select>
-                    <select name="turno">
-                        <option value="">(sin turno)</option>
-                        <option>T1</option>
-                        <option>T2</option>
-                        <option>T3</option>
-                    </select>
-                </div>
-                <div class="row">
-                    <input name="fecha_inicial" type="date" required />
-                    <input name="fecha_final" type="date" required />
-                </div>
-                <div class="row">
-                    <input name="tipo" placeholder="Tipo" value="Gozo de Vacaciones" />
-                    <input name="gozo" type="number" step="0.5" placeholder="Gozo (opcional)" />
-                </div>
-                <button type="submit">Guardar</button>
-                <pre id="manual-log"></pre>
-            </form>
-        </section>
-    </main>
+      <div id="boxVac" style="display:none">
+        <h3>Vacaciones</h3>
+        <div class="row">
+          <input id="vac_q" placeholder="Buscar por # o nombre" />
+          <select id="vac_planta"><option value="">Todas</option><option>Planta 1</option><option>Planta 3</option></select>
+          <input id="vac_start" type="date"/>
+          <input id="vac_end" type="date"/>
+          <button id="vac_buscar" type="button">Buscar</button>
+          <button id="vac_prev" type="button">«</button>
+          <span id="vac_page"></span>
+          <button id="vac_next" type="button">»</button>
+        </div>
+        <table>
+          <thead><tr><th>ID</th><th>#</th><th>Nombre</th><th>Inicio</th><th>Fin</th><th>Tipo</th><th>Gozo</th><th></th></tr></thead>
+          <tbody id="vac_tbody"></tbody>
+        </table>
+      </div>
+    </div>
 
-    <script src="js/api.js"></script>
-    <script src="js/admin.js"></script>
+    <!-- Editor -->
+    <div class="card">
+      <h3>Editor</h3>
+      <div id="editorEmp">
+        <div class="row"><input id="e_emp_id" placeholder="ID" disabled/>
+          <input id="e_emp_num" placeholder="Número"/></div>
+        <div class="row"><input id="e_emp_nombre" placeholder="Nombre completo"/></div>
+        <div class="row"><input id="e_emp_corto" placeholder="Nombre corto"/></div>
+        <div class="row"><select id="e_emp_planta"><option>Planta 1</option><option>Planta 3</option></select>
+          <select id="e_emp_turno"><option value="">(sin turno)</option><option>T1</option><option>T2</option><option>T3</option></select></div>
+        <div class="row"><input id="e_emp_area" placeholder="Área"/><input id="e_emp_foto" placeholder="Foto URL"/></div>
+        <div class="row actions">
+          <button id="e_emp_save" type="button">Guardar</button>
+          <button id="e_emp_delete" type="button">Borrar</button>
+        </div>
+      </div>
+
+      <div id="editorVac" style="display:none">
+        <div class="row"><input id="e_vac_id" placeholder="ID" disabled/>
+          <input id="e_vac_empid" placeholder="Empleado ID"/></div>
+        <div class="row"><input id="e_vac_ini" type="date"/><input id="e_vac_fin" type="date"/></div>
+        <div class="row"><input id="e_vac_tipo" placeholder="Tipo (Gozo de Vacaciones)"/>
+          <input id="e_vac_gozo" type="number" step="0.1" placeholder="Gozo"/></div>
+        <div class="row actions">
+          <button id="e_vac_save" type="button">Guardar</button>
+          <button id="e_vac_delete" type="button">Borrar</button>
+        </div>
+      </div>
+
+      <h4>Mensajes</h4>
+      <div id="admin_msg" class="msg"></div>
+
+      <hr/>
+      <h3>Importar Excel/CSV</h3>
+      <form id="form-import" class="row">
+        <input id="file" type="file" accept=".xlsx,.xls,.csv"/>
+        <button type="submit">Importar</button>
+      </form>
+      <pre id="import-log" class="msg"></pre>
+
+      <hr/>
+      <h3>Alta manual</h3>
+      <form id="form-manual">
+        <div class="row">
+          <input name="numero_emp" placeholder="Número"/>
+          <input name="nombre" placeholder="Nombre"/>
+          <select name="planta"><option>Planta 1</option><option>Planta 3</option></select>
+          <select name="turno"><option value="">(sin turno)</option><option>T1</option><option>T2</option><option>T3</option></select>
+        </div>
+        <div class="row">
+          <input name="fecha_inicial" type="date"/>
+          <input name="fecha_final" type="date"/>
+          <input name="gozo" type="number" step="0.1" placeholder="Gozo (opcional)"/>
+          <button type="submit">Agregar</button>
+        </div>
+      </form>
+      <pre id="manual-log" class="msg"></pre>
+    </div>
+  </div>
+
+  <!-- Importante: api.js primero, luego admin.js -->
+  <script src="js/api.js"></script>
+  <script src="js/admin.js"></script>
 </body>
-
 </html>

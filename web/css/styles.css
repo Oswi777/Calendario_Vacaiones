@@ -1,10 +1,13 @@
 :root { --bg:#0b1530; --card:#12204a; --text:#fff; --muted:#9eb3ff; --accent:#00A0DF; --border:#1f2d66; }
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);font-family:Montserrat,system-ui;cursor:none}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Montserrat,system-ui}
+
+/* Cursor SOLO en páginas TV */
+body.tv{cursor:none}
 button,input,select{cursor:auto}
 
-/* Header TV */
+/* Header */
 header{
   display:flex; align-items:center; justify-content:space-between;
   padding:14px 18px; border-bottom:1px solid var(--border);
@@ -19,11 +22,11 @@ h1{margin:0;font-size:28px; letter-spacing:.5px}
 .admin-link{color:#fff;border:1px solid #2a3a7a;border-radius:8px;padding:6px 10px;text-decoration:none}
 #clock{font-size:18px; opacity:.85}
 
-/* Ocultar controles por inactividad (modo TV) */
-body.inactive header .controls{opacity:0; transition:opacity .3s}
+/* Ocultar controles por inactividad SOLO en TV */
+body.tv.inactive header .controls{opacity:0; transition:opacity .3s}
 header .controls{transition:opacity .3s}
 
-/* Weeks */
+/* Weeks (tablero) */
 .weeks{display:flex;flex-direction:column;gap:18px;padding:14px}
 .week h2{margin:4px 4px 8px 4px;color:var(--muted);font-size:18px}
 .grid7{
@@ -39,7 +42,7 @@ header .controls{transition:opacity .3s}
 }
 .day h3{margin:0 0 8px 0;color:var(--muted);font-weight:700;font-size:16px}
 
-/* Items (nombres grandes) */
+/* Items */
 .item{
   display:flex; align-items:center; gap:10px;
   background:var(--card); border:1px solid #2a3a7a;
@@ -58,8 +61,21 @@ header .controls{transition:opacity .3s}
   border:1px solid #2a3a7a; border-radius:8px; padding:2px 6px;
 }
 
-/* Responsivo (pantallas pequeñas) */
+/* --- Estilos admin extra --- */
+.tabs{display:flex;gap:8px;margin:16px}
+.tabs button{padding:8px 12px;border-radius:8px;border:1px solid #2a3a7a;background:#0e1b3d;color:#fff;font-weight:700}
+.tabs button.active{background:#12204a;border-color:#4a63d3}
+.admin-wrap{display:grid;grid-template-columns:2fr 1fr;gap:16px;padding:0 16px 16px}
+.card{background:#0e1b3d;border:1px solid #1f2d66;border-radius:12px;padding:12px}
+.row{display:flex;gap:8px;margin:6px 0}
+table{width:100%;border-collapse:collapse}
+th,td{border-bottom:1px solid #1f2d66;padding:6px 8px;font-size:14px}
+tr:hover{background:#0b1a3a}
+.actions{display:flex;gap:6px}
+.msg{white-space:pre-wrap;font-family:ui-monospace,monospace;background:#0b1a3a;border:1px solid #2a3a7a;color:#cfe;
+  padding:8px;border-radius:8px;max-height:200px;overflow:auto}
 @media (max-width: 1100px){
+  .admin-wrap{grid-template-columns:1fr}
   .item .nm{font-size:16px}
   .day{min-height:200px}
 }
