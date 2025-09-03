@@ -9,6 +9,12 @@ import random
 
 from models import SessionLocal, init_db, Empleado, Vacacion
 
+# -------- Config --------
+MAX_CAL_DAYS = int(os.getenv("MAX_CAL_DAYS", "90"))
+MAX_IMPORT_ROWS = int(os.getenv("MAX_IMPORT_ROWS", "5000"))
+ALLOWED_IMPORT_EXT = {".xlsx", ".xls", ".csv"}
+APP_VERSION = os.getenv("APP_VERSION", "1.0.0-tvui")
+
 load_dotenv()
 init_db()
 
@@ -16,20 +22,25 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # ---------- Utils ----------
-def parse_date(s: str) -> date:
+def parse_date(s: str):
     if not s:
         return None
-    s = str(s)
+    s = str(s).strip()
     # Acepta 'YYYY-MM-DD' o 'YYYY-MM-DDThh:mm:ss-zz:zz'
     if "T" in s:
         return datetime.date.fromisoformat(s[:10])
     return datetime.date.fromisoformat(s)
 
-def json_error(msg, code=500):
+def json_ok(**data):
+    out = {"ok": True}
+    out.update(data)
+    return jsonify(out)
+
+def json_error(msg, code=400):
     return jsonify({"ok": False, "error": msg}), code
 
 def normalize_planta(val: str) -> str:
-    """Normaliza cualquier forma ('1','Planta1','P-3', etc.) a 'Planta 1'/'Planta 3'."""
+    """Normaliza ('1','Planta1','P-3', etc.) a 'Planta 1'/'Planta 3'."""
     if not val: return "Planta 1"
     s = str(val).strip().lower()
     for tok in ["planta", "plant", "pl", "p", "#", " "]:
@@ -41,16 +52,26 @@ def normalize_planta(val: str) -> str:
         return "Planta 3"
     return "Planta 1"
 
+def clamp_cal_range(start: date, end: date):
+    """Evita range excesivo en /api/calendario."""
+    if (end - start).days > MAX_CAL_DAYS:
+        return False
+    return True
+
 # ---------- Error handler global ----------
 @app.errorhandler(Exception)
 def on_exception(e):
     traceback.print_exc()
     return json_error(f"Server error: {type(e).__name__}: {e}", 500)
 
-# ---------- Health ----------
+# ---------- Meta ----------
 @app.get("/api/health")
 def health():
-    return {"ok": True, "engine": os.getenv("DATABASE_URL", "sqlite")}
+    return json_ok(engine=os.getenv("DATABASE_URL", "sqlite"), version=APP_VERSION)
+
+@app.get("/api/version")
+def version():
+    return json_ok(version=APP_VERSION)
 
 # ---------- Calendario ----------
 @app.get("/api/calendario")
@@ -58,10 +79,17 @@ def calendario():
     qstart = request.args.get("start")
     qend = request.args.get("end")
     planta = request.args.get("planta")
-    q = request.args.get("q")
+    q = (request.args.get("q") or "").strip()
 
     start = parse_date(qstart) if qstart else date.today()
     end = parse_date(qend) if qend else (start + timedelta(days=13))
+
+    if not start or not end:
+        return json_error("Parámetros de fecha inválidos: start/end", 400)
+    if end < start:
+        return json_error("end no puede ser menor que start", 400)
+    if not clamp_cal_range(start, end):
+        return json_error(f"Rango de calendario demasiado grande (máx {MAX_CAL_DAYS} días)", 400)
 
     db = SessionLocal()
     from sqlalchemy import or_
@@ -101,12 +129,11 @@ def calendario():
             },
         })
     db.close()
-    return jsonify({"ok": True, "start": start.isoformat(), "end": end.isoformat(), "items": items})
+    return json_ok(start=start.isoformat(), end=end.isoformat(), items=items)
 
 # ---------- Empleados ----------
 @app.get("/api/empleados/find")
 def empleados_find():
-    """Buscar por numero_emp"""
     numero = request.args.get("numero")
     if not numero:
         return json_error("Parametro 'numero' requerido", 400)
@@ -114,11 +141,11 @@ def empleados_find():
     e = db.execute(select(Empleado).where(Empleado.numero_emp == numero)).scalar_one_or_none()
     db.close()
     if not e:
-        return jsonify({"ok": True, "found": False})
-    return jsonify({"ok": True, "found": True, "empleado": {
+        return json_ok(found=False)
+    return json_ok(found=True, empleado={
         "id": e.id, "numero_emp": e.numero_emp, "nombre": e.nombre,
         "planta": e.planta, "turno": e.turno, "activo": e.activo
-    }})
+    })
 
 @app.post("/api/empleados")
 def alta_empleado():
@@ -158,7 +185,7 @@ def alta_empleado():
         emp_id = e.id
 
     db.close()
-    return jsonify({"ok": True, "id": emp_id})
+    return json_ok(id=emp_id)
 
 # ---------- Vacaciones ----------
 @app.post("/api/vacaciones")
@@ -169,11 +196,18 @@ def alta_vacacion():
         if r not in d or not d[r]:
             return json_error(f"Campo requerido: {r}", 400)
 
+    fi = parse_date(d["fecha_inicial"])
+    ff = parse_date(d["fecha_final"])
+    if not fi or not ff:
+        return json_error("Fechas inválidas en vacación", 400)
+    if ff < fi:
+        return json_error("fecha_final no puede ser menor que fecha_inicial", 400)
+
     db = SessionLocal()
     v = Vacacion(
         empleado_id=d["empleado_id"],
-        fecha_inicial=parse_date(d["fecha_inicial"]),
-        fecha_final=parse_date(d["fecha_final"]),
+        fecha_inicial=fi,
+        fecha_final=ff,
         tipo=d.get("tipo", "Gozo de Vacaciones"),
         gozo=d.get("gozo"),
         fuente=d.get("fuente", "manual"),
@@ -182,7 +216,7 @@ def alta_vacacion():
     db.commit()
     vid = v.id
     db.close()
-    return jsonify({"ok": True, "id": vid})
+    return json_ok(id=vid)
 
 # ---------- Importar Excel/CSV (solo columnas clave; ignora extras) ----------
 @app.post("/api/importar/excel")
@@ -192,21 +226,29 @@ def importar_excel():
       Inicial, Final, #, Nombre, Gozo (opcional), Planta (opcional)
     Ignora columnas extra. Tipo = 'Gozo de Vacaciones'. Turno aleatorio si el empleado no existe.
     Acepta .xlsx/.xls y .csv (prueba UTF-8 y, si falla, latin1).
+    Límite de filas configurable vía MAX_IMPORT_ROWS.
     """
     f = request.files.get("file")
     if not f:
         return json_error("No file", 400)
 
     ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ALLOWED_IMPORT_EXT:
+        return json_error(f"Extensión no permitida. Use: {', '.join(sorted(ALLOWED_IMPORT_EXT))}", 415)
+
+    # Leer DataFrame
     if ext in (".xlsx", ".xls"):
         df = pd.read_excel(f, engine="openpyxl")
     else:
-        # CSV: intenta utf-8 y reintenta con latin1 si hay ñ/acentos
         try:
             df = pd.read_csv(f, encoding="utf-8")
         except UnicodeDecodeError:
             f.seek(0)
             df = pd.read_csv(f, encoding="latin1")
+
+    # Límite de filas
+    if len(df) > MAX_IMPORT_ROWS:
+        return json_error(f"Archivo supera el máximo de filas permitidas ({MAX_IMPORT_ROWS})", 413)
 
     def norm(s):
         return (str(s).strip().lower()
@@ -248,26 +290,25 @@ def importar_excel():
     creados_empleados = 0
     creadas_vac = 0
     rechazadas = 0
+    errores = []
 
-    for _, row in df.iterrows():
+    for idx, row in df.iterrows():
         try:
             ini = parse_date(str(row[c_inicial]))
             fin = parse_date(str(row[c_final]))
-            if not ini or not fin or ini > fin:
-                rechazadas += 1
-                continue
+            if not ini or not fin or fin < ini:
+                rechazadas += 1; errores.append(f"Row {idx+1}: rango de fecha inválido"); continue
 
             numero = str(row[c_num]).strip()
             nombre = str(row[c_nombre]).strip()
+            if not numero or not nombre:
+                rechazadas += 1; errores.append(f"Row {idx+1}: número/nombre vacío"); continue
 
             gozo = None
             if c_gozo is not None and pd.notna(row[c_gozo]):
-                try:
-                    gozo = float(row[c_gozo])
-                except Exception:
-                    gozo = None
+                try: gozo = float(row[c_gozo])
+                except Exception: gozo = None
 
-            planta = None
             if c_planta is not None and pd.notna(row[c_planta]):
                 planta = normalize_planta(row[c_planta])
             else:
@@ -294,13 +335,13 @@ def importar_excel():
                 fuente="excel",
             )
             db.add(v); creadas_vac += 1
-
-        except Exception:
+        except Exception as ex:
             traceback.print_exc()
             rechazadas += 1
+            errores.append(f"Row {idx+1}: {type(ex).__name__}")
 
     db.commit(); db.close()
-    return jsonify({"ok": True, "empleados_creados": creados_empleados, "vacaciones_creadas": creadas_vac, "rechazadas": rechazadas})
+    return json_ok(empleados_creados=creados_empleados, vacaciones_creadas=creadas_vac, rechazadas=rechazadas, errores=errores[:20])
 
 if __name__ == "__main__":
     # Opcional: leer puerto de ENV, por defecto 5000

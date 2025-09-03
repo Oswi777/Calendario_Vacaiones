@@ -7,12 +7,15 @@ const q = document.getElementById("q");
 const btnPrev = document.getElementById("btnPrev");
 const btnNext = document.getElementById("btnNext");
 const lblAnchor = document.getElementById("lblAnchor");
+const btnPause = document.getElementById("btnPause");
+const btnFull = document.getElementById("btnFull");
+const clockEl = document.getElementById("clock");
 
 // Persistencia UI
 const STATE_KEY = "vacaciones.ui";
 
 // Paginación & rotación
-const PAGE_SIZE = 4;      // 4 nombres a la vez
+const PAGE_SIZE = 3;      // 4 nombres a la vez
 const ROTATE_MS = 30000;   // cambia cada 5 s
 const FADE_MS = 450;      // duración del fade-out/in (ms)
 
@@ -23,17 +26,14 @@ let itemsByDay2 = {};
 let offsets1 = {};
 let offsets2 = {};
 let rotateTimer = null;
+let paused = false;
 
-// --------- Utils de fechas/estado ----------
+// --------- Utils de estado ----------
 function anchorLabel(d){ const {start,end}=weekRange(d); return `${fmtISO(start)} → ${fmtISO(end)}`; }
 
 function saveState() {
   try {
-    const state = {
-      planta: f_planta.value || "",
-      q: q.value || "",
-      anchor: fmtISO(anchor),
-    };
+    const state = { planta: f_planta.value||"", q: q.value||"", anchor: fmtISO(anchor), paused };
     localStorage.setItem(STATE_KEY, JSON.stringify(state));
   } catch {}
 }
@@ -49,9 +49,33 @@ function loadState() {
       const d = new Date(st.anchor);
       if (!isNaN(d.getTime())) anchor = d;
     }
+    if (typeof st.paused === "boolean") paused = st.paused;
+    updatePauseUI();
   } catch {}
 }
 
+// --------- Reloj (TV) ----------
+function startClock(){
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tick = () => {
+    const now = new Date();
+    const opts = {weekday:'short', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'};
+    clockEl.textContent = now.toLocaleString('es-MX', opts) + ` · ${tz}`;
+  };
+  tick(); setInterval(tick, 1000);
+}
+
+// --------- Inactividad: oculta controles (modo TV) ----------
+let lastMoveTs = Date.now();
+function markActive(){ lastMoveTs = Date.now(); document.body.classList.remove("inactive"); }
+["mousemove","keydown","mousedown","touchstart"].forEach(ev=>{
+  window.addEventListener(ev, markActive, {passive:true});
+});
+setInterval(()=>{
+  if (Date.now() - lastMoveTs > 6000){ document.body.classList.add("inactive"); }
+}, 1000);
+
+// --------- Construcción de mapas ----------
 function buildMap(data, startDate) {
   const map = {};
   for (let i = 0; i < 7; i++) map[fmtISO(addDays(startDate, i))] = [];
@@ -64,7 +88,7 @@ function buildMap(data, startDate) {
   return map;
 }
 
-// ---- Pintado sin animación (solo escribe DOM)
+// ---- Pintado sin animación
 function paintGrid(container, startDate, itemsMap, offsetsMap) {
   container.innerHTML = "";
   for (let i = 0; i < 7; i++) {
@@ -113,7 +137,7 @@ function animateRepaint(container, repaintFn) {
   container.classList.remove("fade-in");
   container.classList.add("fade-out");
   setTimeout(() => {
-    repaintFn();                          // repinta con el nuevo contenido
+    repaintFn();
     requestAnimationFrame(() => {
       container.classList.remove("fade-out");
       container.classList.add("fade-in");
@@ -139,7 +163,6 @@ async function fetchAndRender() {
   lbl1.textContent = `Semana (${fmtISO(w1.start)} → ${fmtISO(w1.end)})`;
   lbl2.textContent = `Semana siguiente (${fmtISO(w2.start)} → ${fmtISO(w2.end)})`;
 
-  // Usamos los valores actuales de UI (persistidos) sin resetear
   const params = { planta: f_planta.value, q: q.value };
 
   const [d1, d2] = await Promise.all([
@@ -149,29 +172,23 @@ async function fetchAndRender() {
 
   itemsByDay1 = buildMap(d1, w1.start);
   itemsByDay2 = buildMap(d2, w2.start);
-  // offsets se mantienen si quisieras, pero al recargar datos solemos resetear:
   offsets1 = {}; offsets2 = {};
 
-  // Primer pintado (sin animación)
   paintGrid(grid1, w1.start, itemsByDay1, offsets1);
   paintGrid(grid2, w2.start, itemsByDay2, offsets2);
 }
 
 // Render principal
-async function render(){ 
-  await fetchAndRender(); 
-  saveState(); // guarda al terminar cada render (mantiene anchor/planta/q)
+async function render(){
+  await fetchAndRender();
+  saveState();
 }
 
-// Navegación & filtros (guardamos estado al cambiar)
-btnPrev.onclick = () => { anchor = addDays(anchor, -7); saveState(); render(); };
-btnNext.onclick = () => { anchor = addDays(anchor,  7); saveState(); render(); };
-[f_planta, q].forEach(el => el.addEventListener('input', () => { saveState(); render(); }));
-
-// Rotación periódica (no resetea filtros/anchor)
+// Rotación periódica (con pausa)
 function startRotation() {
   if (rotateTimer) clearInterval(rotateTimer);
   rotateTimer = setInterval(() => {
+    if (paused) return;
     const w1 = weekRange(anchor);
     const w2 = nextWeekRange(anchor);
     advanceOffsets(itemsByDay1, offsets1);
@@ -181,13 +198,32 @@ function startRotation() {
   }, ROTATE_MS);
 }
 
-// Inicial: restaura estado y arranca
+function updatePauseUI(){
+  btnPause.textContent = paused ? "▶" : "⏸";
+}
+
+// Navegación & filtros
+btnPrev.onclick = () => { anchor = addDays(anchor, -7); saveState(); render(); };
+btnNext.onclick = () => { anchor = addDays(anchor,  7); saveState(); render(); };
+[f_planta, q].forEach(el => el.addEventListener('input', () => { saveState(); render(); }));
+
+btnPause.onclick = () => { paused = !paused; updatePauseUI(); saveState(); };
+btnFull.onclick = () => toggleFullscreen();
+
+// Atajos de teclado
+window.addEventListener("keydown", (e)=>{
+  if (e.key === " "){ paused = !paused; updatePauseUI(); saveState(); e.preventDefault(); }
+  if (e.key.toLowerCase() === "f"){ toggleFullscreen(); }
+});
+
+// Inicial
 loadState();
+updatePauseUI();
+startClock();
 render();
 startRotation();
 
-// Auto-refresh de datos cada 5 min (mantiene filtros/anchor)
+// Auto-refresh de datos cada 5 min (mantiene filtros/anchor/pausa)
 setInterval(async () => {
-  await fetchAndRender(); // no tocamos filtros ni anchor
-  // no reiniciamos el intervalo de rotación; se mantiene
+  await fetchAndRender();
 }, 5*60*1000);
