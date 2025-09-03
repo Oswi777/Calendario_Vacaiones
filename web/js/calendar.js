@@ -4,11 +4,21 @@ const lbl1 = document.getElementById("lbl_w1");
 const lbl2 = document.getElementById("lbl_w2");
 const f_planta = document.getElementById("f_planta");
 const q = document.getElementById("q");
+const btnPrev = document.getElementById("btnPrev");
+const btnNext = document.getElementById("btnNext");
+const lblAnchor = document.getElementById("lblAnchor");
+
+// "anchor" es la fecha base para la fila 1 (semana ancla).
+let anchor = new Date();
+
+function anchorLabel(d){
+  const {start, end} = weekRange(d);
+  return `${fmtISO(start)} → ${fmtISO(end)}`;
+}
 
 async function renderWeekGrid(container, start){
   const end = addDays(start,6);
   const data = await API.calendario(fmtISO(start), fmtISO(end), {planta:f_planta.value, q:q.value});
-  // preparar map por día
   const map = {};
   for(let i=0;i<7;i++){ const d=fmtISO(addDays(start,i)); map[d]=[]; }
   for(const it of data.items){
@@ -38,15 +48,18 @@ async function renderWeekGrid(container, start){
 }
 
 async function render(){
-  const today = new Date(); // al terminar la semana, esto reubica automáticamente las hileras
-  const w1 = weekRange(today);
-  const w2 = nextWeekRange(today);
-  lbl1.textContent = `Semana actual (${fmtISO(w1.start)} → ${fmtISO(w1.end)})`;
+  const w1 = weekRange(anchor);
+  const w2 = nextWeekRange(anchor);
+  lblAnchor.textContent = anchorLabel(anchor);
+  lbl1.textContent = `Semana (${fmtISO(w1.start)} → ${fmtISO(w1.end)})`;
   lbl2.textContent = `Semana siguiente (${fmtISO(w2.start)} → ${fmtISO(w2.end)})`;
   await renderWeekGrid(grid1, w1.start);
   await renderWeekGrid(grid2, w2.start);
 }
 
+btnPrev.onclick = () => { anchor = addDays(anchor, -7); render(); }
+btnNext.onclick = () => { anchor = addDays(anchor, 7); render(); }
 [f_planta,q].forEach(el=>el.addEventListener('input', ()=>render()));
+
 render();
-setInterval(render, 5*60*1000); // auto-refresh cada 5 min
+setInterval(render, 5*60*1000); // auto-refresh
