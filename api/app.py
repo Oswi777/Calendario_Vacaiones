@@ -281,6 +281,151 @@ def vacaciones_delete(vac_id):
     db.commit(); db.close()
     return json_ok(deleted=True)
 
+# ---------- Empleados: upsert por numero_emp ----------
+@app.post("/api/empleados")
+def alta_empleado():
+    data = request.get_json() or {}
+    if not data.get("numero_emp") or not data.get("nombre"):
+        return json_error("numero_emp y nombre son requeridos", 400)
+
+    # normaliza planta si viene
+    if data.get("planta") is not None:
+        data["planta"] = normalize_planta(data["planta"])
+
+    db = SessionLocal()
+    try:
+        e = db.execute(select(Empleado).where(Empleado.numero_emp == data["numero_emp"])).scalar_one_or_none()
+        if e:
+            # update
+            e.nombre = data.get("nombre", e.nombre)
+            e.nombre_corto = data.get("nombre_corto", e.nombre_corto)
+            e.area = data.get("area", e.area)
+            e.turno = data.get("turno", e.turno)
+            e.planta = data.get("planta", e.planta)
+            e.foto_url = data.get("foto_url", e.foto_url)
+            e.activo = True if data.get("activo", True) else False
+            db.commit()
+            emp_id = e.id
+        else:
+            # insert
+            e = Empleado(
+                numero_emp=data["numero_emp"],
+                nombre=data["nombre"],
+                nombre_corto=data.get("nombre_corto"),
+                area=data.get("area"),
+                turno=data.get("turno"),
+                planta=data.get("planta"),
+                foto_url=data.get("foto_url"),
+                activo=True,
+            )
+            db.add(e)
+            db.commit()
+            emp_id = e.id
+        return json_ok(id=emp_id)
+    finally:
+        db.close()
+
+# ---------- Vacaciones: alta (con validación de empleado) ----------
+@app.post("/api/vacaciones")
+def alta_vacacion():
+    d = request.get_json() or {}
+    for r in ("empleado_id", "fecha_inicial", "fecha_final"):
+        if not d.get(r):
+            return json_error(f"Campo requerido: {r}", 400)
+
+    fi = parse_date(d["fecha_inicial"])
+    ff = parse_date(d["fecha_final"])
+    if not fi or not ff:
+        return json_error("Fechas inválidas en vacación", 400)
+    if ff < fi:
+        return json_error("fecha_final no puede ser menor que fecha_inicial", 400)
+
+    db = SessionLocal()
+    try:
+        emp = db.get(Empleado, int(d["empleado_id"]))
+        if not emp or not emp.activo:
+            db.close(); return json_error("Empleado no encontrado o inactivo", 400)
+
+        v = Vacacion(
+            empleado_id=int(d["empleado_id"]),
+            fecha_inicial=fi,
+            fecha_final=ff,
+            tipo=d.get("tipo", "Gozo de Vacaciones"),
+            gozo=d.get("gozo"),
+            fuente=d.get("fuente", "manual"),
+        )
+        db.add(v)
+        db.commit()
+        return json_ok(id=v.id)
+    finally:
+        db.close()
+
+# ---------- Alta atómica: empleado + vacación ----------
+@app.post("/api/alta/empleado-vacacion")
+def alta_empleado_vacacion():
+    d = request.get_json() or {}
+
+    # Requeridos
+    reqs = ("numero_emp", "nombre", "fecha_inicial", "fecha_final")
+    faltantes = [k for k in reqs if not d.get(k)]
+    if faltantes:
+        return json_error(f"Campos requeridos: {', '.join(faltantes)}", 400)
+
+    fi = parse_date(d["fecha_inicial"])
+    ff = parse_date(d["fecha_final"])
+    if not fi or not ff:
+        return json_error("Fechas inválidas", 400)
+    if ff < fi:
+        return json_error("fecha_final no puede ser menor que fecha_inicial", 400)
+
+    # Normaliza planta si viene
+    if d.get("planta") is not None:
+        d["planta"] = normalize_planta(d["planta"])
+
+    db = SessionLocal()
+    try:
+        # Upsert Empleado por numero_emp
+        e = db.execute(select(Empleado).where(Empleado.numero_emp == str(d["numero_emp"]).strip())).scalar_one_or_none()
+        if e:
+            e.nombre = d.get("nombre", e.nombre)
+            e.nombre_corto = d.get("nombre_corto", e.nombre_corto)
+            e.area = d.get("area", e.area)
+            e.turno = d.get("turno", e.turno)
+            e.planta = d.get("planta", e.planta)
+            e.foto_url = d.get("foto_url", e.foto_url)
+            e.activo = True
+        else:
+            e = Empleado(
+                numero_emp=str(d["numero_emp"]).strip(),
+                nombre=d["nombre"],
+                nombre_corto=d.get("nombre_corto"),
+                area=d.get("area"),
+                turno=d.get("turno"),
+                planta=d.get("planta"),
+                foto_url=d.get("foto_url"),
+                activo=True,
+            )
+            db.add(e)
+            db.flush()  # para obtener e.id
+
+        v = Vacacion(
+            empleado_id=e.id,
+            fecha_inicial=fi,
+            fecha_final=ff,
+            tipo=d.get("tipo", "Gozo de Vacaciones"),
+            gozo=d.get("gozo"),
+            fuente=d.get("fuente", "manual"),
+        )
+        db.add(v)
+
+        db.commit()
+        return json_ok(empleado_id=e.id, vacacion_id=v.id)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
 # ---------- Importar Excel/CSV ----------
 @app.post("/api/importar/excel")
 def importar_excel():

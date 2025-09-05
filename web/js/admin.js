@@ -5,6 +5,14 @@ const VAC_STATE_KEY = "vacaciones.admin.vacaciones";
 // No redeclarar API_BASE si ya viene de api.js
 window.API_BASE = window.API_BASE || "http://localhost:5000";
 
+// ---- Parachoques global contra submits no deseados en editores ----
+document.addEventListener("submit", (e)=>{
+  const okIds = new Set(["form-import","form-manual"]);
+  if (!e.target || !okIds.has(e.target.id)) {
+    e.preventDefault(); // bloquea submits accidentales (editores)
+  }
+}, true);
+
 // Helper fetch JSON con manejo de error
 async function fetchJSON(url, opts = {}, timeoutMs = 30000) {
   const controller = new AbortController();
@@ -32,16 +40,18 @@ const boxVac = document.getElementById("boxVac");
 const editorEmp = document.getElementById("editorEmp");
 const editorVac = document.getElementById("editorVac");
 
-tabEmp.onclick = ()=>{ 
+tabEmp.onclick = (ev)=>{ 
+  ev.preventDefault();
   tabEmp.classList.add("active"); 
   tabVac.classList.remove("active"); 
   boxEmp.style.display="block"; 
   boxVac.style.display="none"; 
   editorEmp.style.display="block"; 
   editorVac.style.display="none"; 
-  saveEmpState(); // persistimos tab también por si quieres usarlo luego
+  saveEmpState();
 };
-tabVac.onclick = ()=>{ 
+tabVac.onclick = (ev)=>{ 
+  ev.preventDefault();
   tabVac.classList.add("active"); 
   tabEmp.classList.remove("active"); 
   boxVac.style.display="block"; 
@@ -99,7 +109,6 @@ async function loadEmpleados() {
     const data = await fetchJSON(`${window.API_BASE}/api/empleados?` + qs.toString());
     empTotal = data.total || 0;
     const maxp = Math.max(1, Math.ceil(empTotal/empSize));
-    // Ajuste por si cambió el total y la página actual quedó fuera de rango
     if (empPage > maxp) { empPage = maxp; saveEmpState(); return loadEmpleados(); }
 
     emp_page.textContent = `Página ${data.page} / ${maxp}`;
@@ -111,15 +120,15 @@ async function loadEmpleados() {
       emp_tbody.appendChild(tr);
     });
     setMsg("");
-    saveEmpState(); // persistimos después de pintar
+    saveEmpState();
   } catch (err) {
     setMsg("Error: " + err.message);
     console.error(err);
   }
 }
-emp_buscar.onclick = ()=>{ empPage = 1; saveEmpState(); loadEmpleados(); };
-emp_prev.onclick = ()=>{ if(empPage>1){ empPage--; saveEmpState(); loadEmpleados(); } };
-emp_next.onclick = ()=>{ const maxp = Math.max(1, Math.ceil(empTotal/empSize)); if(empPage<maxp){ empPage++; saveEmpState(); loadEmpleados(); } };
+emp_buscar.onclick = (ev)=>{ ev.preventDefault(); empPage = 1; saveEmpState(); loadEmpleados(); };
+emp_prev.onclick = (ev)=>{ ev.preventDefault(); if(empPage>1){ empPage--; saveEmpState(); loadEmpleados(); } };
+emp_next.onclick = (ev)=>{ ev.preventDefault(); const maxp = Math.max(1, Math.ceil(empTotal/empSize)); if(empPage<maxp){ empPage++; saveEmpState(); loadEmpleados(); } };
 emp_q.addEventListener("input", ()=>{ saveEmpState(); });
 emp_planta.addEventListener("change", ()=>{ saveEmpState(); });
 emp_turno.addEventListener("change", ()=>{ saveEmpState(); });
@@ -127,7 +136,6 @@ emp_turno.addEventListener("change", ()=>{ saveEmpState(); });
 emp_tbody.addEventListener("click", (e)=>{
   const btn = e.target.closest(".emp_edit"); if(!btn) return;
   const tr = btn.closest("tr"); const tds = tr.querySelectorAll("td");
-  // Cargar en editor
   document.getElementById("e_emp_id").value = btn.dataset.id;
   document.getElementById("e_emp_num").value = tds[0].textContent || "";
   document.getElementById("e_emp_nombre").value = tds[1].textContent || "";
@@ -136,7 +144,7 @@ emp_tbody.addEventListener("click", (e)=>{
   setMsg("Empleado cargado en editor.");
 });
 
-// Guardar / Borrar Empleado (mantiene filtros y página)
+// Guardar / Borrar Empleado
 document.getElementById("e_emp_save").onclick = async (ev)=>{
   ev.preventDefault();
   try{
@@ -155,7 +163,6 @@ document.getElementById("e_emp_save").onclick = async (ev)=>{
       method:"PUT", headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
     });
     setMsg("Empleado guardado.");
-    // recarga con filtros/página actuales
     await loadEmpleados();
   }catch(err){ setMsg("Error: " + err.message); }
 };
@@ -250,9 +257,9 @@ async function loadVacaciones(){
     saveVacState();
   }catch(err){ setMsg("Error: " + err.message); console.error(err); }
 }
-vac_buscar.onclick = ()=>{ vacPage=1; saveVacState(); loadVacaciones(); };
-vac_prev.onclick = ()=>{ if(vacPage>1){ vacPage--; saveVacState(); loadVacaciones(); } };
-vac_next.onclick = ()=>{ const maxp = Math.max(1, Math.ceil(vacTotal/vacSize)); if(vacPage<maxp){ vacPage++; saveVacState(); loadVacaciones(); } };
+vac_buscar.onclick = (ev)=>{ ev.preventDefault(); vacPage=1; saveVacState(); loadVacaciones(); };
+vac_prev.onclick = (ev)=>{ ev.preventDefault(); if(vacPage>1){ vacPage--; saveVacState(); loadVacaciones(); } };
+vac_next.onclick = (ev)=>{ ev.preventDefault(); const maxp = Math.max(1, Math.ceil(vacTotal/vacSize)); if(vacPage<maxp){ vacPage++; saveVacState(); loadVacaciones(); } };
 [vac_q, vac_planta, vac_start, vac_end].forEach(el=>{
   el.addEventListener("input", saveVacState);
   el.addEventListener("change", saveVacState);
@@ -270,7 +277,7 @@ vac_tbody.addEventListener("click", (e)=>{
   setMsg("Vacación cargada en editor.");
 });
 
-// Guardar / Borrar Vacación (mantiene filtros y página)
+// Guardar / Borrar Vacación
 document.getElementById("e_vac_save").onclick = async (ev)=>{
   ev.preventDefault();
   try{
@@ -302,7 +309,7 @@ document.getElementById("e_vac_delete").onclick = async (ev)=>{
   }catch(err){ setMsg("Error: " + err.message); }
 };
 
-// ----- Importar (mantiene filtros y página; solo refrescamos listas)
+// ----- Importar
 const formImp = document.getElementById("form-import");
 const logImp = document.getElementById("import-log");
 formImp.addEventListener("submit", async (e)=>{
@@ -314,12 +321,11 @@ formImp.addEventListener("submit", async (e)=>{
     const fd = new FormData(); fd.append("file", file);
     const data = await fetchJSON(`${window.API_BASE}/api/importar/excel`, { method: "POST", body: fd }, 120000);
     logImp.textContent = JSON.stringify(data, null, 2);
-    // refresca listas con estado actual
     await Promise.all([loadEmpleados(), loadVacaciones()]);
   }catch(err){ logImp.textContent = `Error: ${err.message}`; }
 });
 
-// ----- Alta manual (upsert + vacación) (mantiene filtros/páginas)
+// ----- Alta manual (ahora ATÓMICA)
 const formMan = document.getElementById("form-manual");
 const logMan = document.getElementById("manual-log");
 formMan.addEventListener("submit", async (e)=>{
@@ -332,37 +338,40 @@ formMan.addEventListener("submit", async (e)=>{
     if(!ini || !fin) throw new Error("Selecciona fechas");
     if(new Date(ini) > new Date(fin)) throw new Error("La fecha final no puede ser menor que la inicial");
 
-    const rEmp = await fetchJSON(`${window.API_BASE}/api/empleados`, {
-      method:"POST", headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        numero_emp: fd.get("numero_emp"),
-        nombre: fd.get("nombre"),
-        planta: fd.get("planta"),
-        turno: fd.get("turno") || null
-      })
+    const payload = {
+      numero_emp: fd.get("numero_emp"),
+      nombre: fd.get("nombre"),
+      planta: fd.get("planta"),
+      turno: fd.get("turno") || null,
+      fecha_inicial: ini,
+      fecha_final: fin,
+      tipo: "Gozo de Vacaciones",
+      gozo: fd.get("gozo") ? parseFloat(fd.get("gozo")) : null,
+      fuente: "manual"
+    };
+
+    const data = await fetchJSON(`${window.API_BASE}/api/alta/empleado-vacacion`, {
+      method:"POST", headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
     });
-    const rVac = await fetchJSON(`${window.API_BASE}/api/vacaciones`, {
-      method:"POST", headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        empleado_id: rEmp.id,
-        fecha_inicial: ini,
-        fecha_final: fin,
-        tipo: "Gozo de Vacaciones",
-        gozo: fd.get("gozo") ? parseFloat(fd.get("gozo")) : null
-      })
-    });
-    logMan.textContent = JSON.stringify({empleado:rEmp, vacacion:rVac}, null, 2);
+
+    logMan.textContent = JSON.stringify(data, null, 2);
     formMan.reset();
+
+    // Ajusta filtros para ver lo recién creado
+    vac_q.value = payload.numero_emp || payload.nombre || "";
+    vac_start.value = ini;
+    vac_end.value = fin;
+    saveVacState();
+
     await Promise.all([loadEmpleados(), loadVacaciones()]);
   }catch(err){
     logMan.textContent = `Error: ${err.message}`;
   }
 });
 
-// -------- Inicialización: restaurar estado y pintar sin perder filtros --------
+// -------- Inicialización --------
 loadEmpState();
 loadVacState();
-// Si faltan fechas en vacaciones, ponemos un rango por defecto (y guardamos)
 if (!vac_start.value || !vac_end.value) {
   const today = new Date();
   const y = today.toISOString().slice(0,10);

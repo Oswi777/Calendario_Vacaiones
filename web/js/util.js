@@ -8,7 +8,6 @@ function weekRange(d){
   return {start, end};
 }
 function nextWeekRange(d){ const {end}=weekRange(d); const start=addDays(end,1); return {start, end:addDays(start,6)}; }
-function fmtISO(d){ return d.toISOString().slice(0,10); }
 
 async function toggleFullscreen(){
   if (!document.fullscreenElement){

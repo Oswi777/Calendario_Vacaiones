@@ -16,7 +16,7 @@ const STATE_KEY = "vacaciones.ui";
 
 // Paginación & rotación
 const PAGE_SIZE = 3;      // 4 nombres a la vez
-const ROTATE_MS = 30000;   // cambia cada 5 s
+const ROTATE_MS = 10000;   // cambia cada 10 s
 const FADE_MS = 450;      // duración del fade-out/in (ms)
 
 // Estado
