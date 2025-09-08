@@ -3,7 +3,7 @@ const EMP_STATE_KEY = "vacaciones.admin.empleados";
 const VAC_STATE_KEY = "vacaciones.admin.vacaciones";
 
 // No redeclarar API_BASE si ya viene de api.js
-window.API_BASE = window.API_BASE || "http://localhost:5000";
+//window.API_BASE = window.API_BASE || "http://localhost:5000";
 
 // ---- Parachoques global contra submits no deseados en editores ----
 document.addEventListener("submit", (e)=>{
@@ -227,6 +227,29 @@ function defaultVacRangeIfEmpty(){
   }
 }
 
+// Añade esta función utilitaria
+function weekRangeJS(d=new Date()){
+  const x = new Date(d);
+  const dow = x.getDay(); // 0=Dom
+  const start = new Date(x); start.setDate(x.getDate() - ((dow+6)%7)); start.setHours(0,0,0,0);
+  const end = new Date(start); end.setDate(start.getDate()+6); end.setHours(0,0,0,0);
+  const fmt = (u)=>u.toISOString().slice(0,10);
+  return { start: fmt(start), end: fmt(end) };
+}
+
+
+
+// Botón “Semana actual” en Vacaciones (admin)
+document.getElementById("vac_today").onclick = (ev)=>{
+  ev.preventDefault();
+  const r = weekRangeJS(new Date());
+  vac_start.value = r.start;
+  vac_end.value = r.end;
+  saveVacState();
+  loadVacaciones();
+};
+
+
 async function loadVacaciones(){
   setMsg("Cargando vacaciones...");
   defaultVacRangeIfEmpty();
@@ -338,9 +361,17 @@ formMan.addEventListener("submit", async (e)=>{
     if(!ini || !fin) throw new Error("Selecciona fechas");
     if(new Date(ini) > new Date(fin)) throw new Error("La fecha final no puede ser menor que la inicial");
 
+    const apellidos = (fd.get("apellidos")||"").trim();
+    const nombres = (fd.get("nombres")||"").trim();
+
+    // Construye también el nombre canónico para el backend
+    const nombreCanon = apellidos && nombres ? `${apellidos}, ${nombres}` : (apellidos || nombres);
+
     const payload = {
-      numero_emp: fd.get("numero_emp"),
-      nombre: fd.get("nombre"),
+      numero_emp: (fd.get("numero_emp")||"").trim(),
+      apellidos,
+      nombres,
+      nombre: nombreCanon,    // redundante pero útil
       planta: fd.get("planta"),
       turno: fd.get("turno") || null,
       fecha_inicial: ini,
@@ -358,16 +389,17 @@ formMan.addEventListener("submit", async (e)=>{
     formMan.reset();
 
     // Ajusta filtros para ver lo recién creado
-    vac_q.value = payload.numero_emp || payload.nombre || "";
+    vac_q.value = payload.numero_emp || nombreCanon || "";
     vac_start.value = ini;
     vac_end.value = fin;
     saveVacState();
 
-    await Promise.all([loadEmpleados(), loadVacaciones()]);
+    await loadVacaciones();
   }catch(err){
     logMan.textContent = `Error: ${err.message}`;
   }
 });
+
 
 // -------- Inicialización --------
 loadEmpState();

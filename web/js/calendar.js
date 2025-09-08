@@ -6,6 +6,7 @@ const f_planta = document.getElementById("f_planta");
 const q = document.getElementById("q");
 const btnPrev = document.getElementById("btnPrev");
 const btnNext = document.getElementById("btnNext");
+const btnToday = document.getElementById("btnToday"); // NUEVO
 const lblAnchor = document.getElementById("lblAnchor");
 const btnPause = document.getElementById("btnPause");
 const btnFull = document.getElementById("btnFull");
@@ -15,9 +16,9 @@ const clockEl = document.getElementById("clock");
 const STATE_KEY = "vacaciones.ui";
 
 // Paginación & rotación
-const PAGE_SIZE = 3;      // 4 nombres a la vez
-const ROTATE_MS = 10000;   // cambia cada 10 s
-const FADE_MS = 450;      // duración del fade-out/in (ms)
+const PAGE_SIZE = 3;
+const ROTATE_MS = 30000;
+const FADE_MS = 450;
 
 // Estado
 let anchor = new Date();
@@ -53,6 +54,14 @@ function loadState() {
     updatePauseUI();
   } catch {}
 }
+
+// Reloj y demás utilidades… (igual)
+
+// ---- Botón HOY: lleva el ancla a la semana de hoy
+btnToday.onclick = () => { anchor = new Date(); saveState(); render(); };
+
+// … resto del archivo igual que tu versión anterior …
+
 
 // --------- Reloj (TV) ----------
 function startClock(){
