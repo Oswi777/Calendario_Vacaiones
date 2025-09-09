@@ -1,3 +1,4 @@
+window.API_BASE = (window.API_BASE ?? window.location.origin).replace(/\/$/, "");
 // Persistencia de filtros/estado
 const EMP_STATE_KEY = "vacaciones.admin.empleados";
 const VAC_STATE_KEY = "vacaciones.admin.vacaciones";

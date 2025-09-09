@@ -1,12 +1,13 @@
 import os, datetime, io, traceback
 from datetime import date, timedelta
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory, abort
 from flask_cors import CORS
 from dotenv import load_dotenv
-from sqlalchemy import select, and_, or_, desc
+from sqlalchemy import select, and_, or_, desc, func
 import pandas as pd
 import random
 import re
+from werkzeug.exceptions import HTTPException
 
 from models import SessionLocal, init_db, Empleado, Vacacion
 
@@ -16,10 +17,14 @@ MAX_IMPORT_ROWS = int(os.getenv("MAX_IMPORT_ROWS", "5000"))
 ALLOWED_IMPORT_EXT = {".xlsx", ".xls", ".csv"}
 APP_VERSION = os.getenv("APP_VERSION", "1.2.1-ordering+ui")
 
+# Directorio del frontend (carpeta hermana a /api)
+WEB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web"))
+
 load_dotenv()
 init_db()
 
 app = Flask(__name__)
+# Si sirves todo con Flask (mismo origen), CORS ya no es necesario para /api/*
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # ---------- Utils ----------
@@ -101,6 +106,9 @@ def derive_nombre_corto(nombre_canonico: str) -> str:
 # ---------- Error handler global ----------
 @app.errorhandler(Exception)
 def on_exception(e):
+    # Deja pasar errores HTTP (404, 405, etc.) como están
+    if isinstance(e, HTTPException):
+        return e
     traceback.print_exc()
     return json_error(f"Server error: {type(e).__name__}: {e}", 500)
 
@@ -177,21 +185,21 @@ def empleados_list():
     page = max(1, page); size = max(1, min(size, 100))
 
     db = SessionLocal()
-    stmt = select(Empleado).where(Empleado.activo == True)
+    base = select(Empleado).where(Empleado.activo == True)
     if planta:
-        stmt = stmt.where(Empleado.planta == normalize_planta(planta))
+        base = base.where(Empleado.planta == normalize_planta(planta))
     if turno:
-        stmt = stmt.where(Empleado.turno == turno)
+        base = base.where(Empleado.turno == turno)
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(or_(Empleado.nombre.ilike(like),
+        base = base.where(or_(Empleado.nombre.ilike(like),
                               Empleado.numero_emp.ilike(like)))
 
-    # total
-    total = len(db.execute(stmt).scalars().all())
+    # total (COUNT(*))
+    total = db.execute(select(func.count()).select_from(base.subquery())).scalar() or 0
 
     # ORDEN NUEVOS PRIMERO
-    stmt = stmt.order_by(desc(Empleado.id)).offset((page-1)*size).limit(size)
+    stmt = base.order_by(desc(Empleado.id)).offset((page-1)*size).limit(size)
 
     rows = []
     for e in db.execute(stmt).scalars():
@@ -244,6 +252,17 @@ def empleados_delete(emp_id):
     db.commit(); db.close()
     return json_ok(deleted=True)
 
+# ---------- Helper: traslapes ----------
+def _hay_traslape(db, empleado_id: int, fi: date, ff: date, ignore_id: int=None) -> bool:
+    stmt = select(Vacacion).where(
+        Vacacion.empleado_id==empleado_id,
+        Vacacion.fecha_inicial <= ff,
+        Vacacion.fecha_final >= fi,
+    )
+    if ignore_id:
+        stmt = stmt.where(Vacacion.id != ignore_id)
+    return db.execute(stmt).first() is not None
+
 # ---------- Vacaciones (CRUD) ----------
 @app.get("/api/vacaciones")
 def vacaciones_list():
@@ -262,19 +281,21 @@ def vacaciones_list():
         return json_error("start y end son requeridos", 400)
 
     db = SessionLocal()
-    stmt = select(Vacacion).join(Empleado).where(
+    base = select(Vacacion).join(Empleado).where(
         and_(Vacacion.fecha_inicial <= end,
              Vacacion.fecha_final >= start,
              Empleado.activo == True)
     )
     if planta:
-        stmt = stmt.where(Empleado.planta == normalize_planta(planta))
+        base = base.where(Empleado.planta == normalize_planta(planta))
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(or_(Empleado.nombre.ilike(like), Empleado.numero_emp.ilike(like)))
+        base = base.where(or_(Empleado.nombre.ilike(like), Empleado.numero_emp.ilike(like)))
 
-    total = len(db.execute(stmt).scalars().all())
-    stmt = stmt.offset((page-1)*size).limit(size)
+    total = db.execute(select(func.count()).select_from(base.subquery())).scalar() or 0
+    stmt = base.order_by(desc(Vacacion.fecha_inicial), desc(Vacacion.id))\
+               .offset((page-1)*size).limit(size)
+
     rows = []
     for v in db.execute(stmt).scalars():
         e = v.empleado
@@ -294,6 +315,42 @@ def vacaciones_list():
     db.close()
     return json_ok(items=rows, page=page, size=size, total=total)
 
+@app.post("/api/vacaciones")
+def vacaciones_create():
+    d = request.get_json() or {}
+    reqs = ("empleado_id","fecha_inicial","fecha_final")
+    falt = [k for k in reqs if not (str(d.get(k) or "").strip())]
+    if falt: return json_error(f"Campos requeridos: {', '.join(falt)}", 400)
+
+    fi = parse_date(d["fecha_inicial"]); ff = parse_date(d["fecha_final"])
+    if not fi or not ff: return json_error("Fechas inválidas", 400)
+    if ff < fi: return json_error("fecha_final no puede ser menor que fecha_inicial", 400)
+
+    db = SessionLocal()
+    try:
+        emp = db.get(Empleado, int(d["empleado_id"]))
+        if not emp or not emp.activo:
+            return json_error("Empleado no encontrado o inactivo", 404)
+
+        # chequeo traslape
+        if _hay_traslape(db, emp.id, fi, ff):
+            return json_error("Rango traslapa con otra vacación del empleado", 400)
+
+        v = Vacacion(
+            empleado_id=emp.id,
+            fecha_inicial=fi,
+            fecha_final=ff,
+            tipo=d.get("tipo","Gozo de Vacaciones"),
+            gozo=d.get("gozo"),
+            fuente=d.get("fuente","manual"),
+        )
+        db.add(v); db.commit()
+        return json_ok(id=v.id)
+    except Exception:
+        db.rollback(); raise
+    finally:
+        db.close()
+
 @app.put("/api/vacaciones/<int:vac_id>")
 def vacaciones_update(vac_id):
     d = request.get_json() or {}
@@ -308,15 +365,20 @@ def vacaciones_update(vac_id):
             db.close(); return json_error("Empleado destino no encontrado o inactivo", 400)
         v.empleado_id = int(d["empleado_id"])
     if "fecha_inicial" in d and d["fecha_inicial"]:
-        fi = parse_date(d["fecha_inicial"]); 
+        fi = parse_date(d["fecha_inicial"])
         if not fi: db.close(); return json_error("fecha_inicial inválida", 400)
         v.fecha_inicial = fi
     if "fecha_final" in d and d["fecha_final"]:
-        ff = parse_date(d["fecha_final"]); 
+        ff = parse_date(d["fecha_final"])
         if not ff: db.close(); return json_error("fecha_final inválida", 400)
         v.fecha_final = ff
     if v.fecha_final < v.fecha_inicial:
         db.close(); return json_error("fecha_final no puede ser menor que fecha_inicial", 400)
+
+    # chequeo traslape ignorando la propia vacación
+    if _hay_traslape(db, v.empleado_id, v.fecha_inicial, v.fecha_final, ignore_id=v.id):
+        db.close(); return json_error("Rango traslapa con otra vacación del empleado", 400)
+
     if "tipo" in d and d["tipo"]:
         v.tipo = d["tipo"]
     if "gozo" in d:
@@ -442,6 +504,11 @@ def alta_empleado_vacacion():
             db.add(e)
             db.flush()
 
+        # chequeo traslape antes de insertar
+        if _hay_traslape(db, e.id, fi, ff):
+            db.rollback()
+            return json_error("Rango traslapa con otra vacación del empleado", 400)
+
         v = Vacacion(
             empleado_id=e.id,
             fecha_inicial=fi,
@@ -460,125 +527,21 @@ def alta_empleado_vacacion():
     finally:
         db.close()
 
-# ---------- Import Excel/CSV (igual que antes; sin cambios funcionales relevantes) ----------
-@app.post("/api/importar/excel")
-def importar_excel():
-    f = request.files.get("file")
-    if not f:
-        return json_error("No file", 400)
+# ---------- Frontend (sirve /, /admin y archivos estáticos) ----------
+@app.route("/")
+def serve_index():
+    return send_from_directory(WEB_DIR, "index.html")
 
-    ext = os.path.splitext(f.filename)[1].lower()
-    if ext not in ALLOWED_IMPORT_EXT:
-        return json_error(f"Extensión no permitida. Use: {', '.join(sorted(ALLOWED_IMPORT_EXT))}", 415)
+@app.route("/admin")
+def serve_admin():
+    return send_from_directory(WEB_DIR, "admin.html")
 
-    if ext in (".xlsx", ".xls"):
-        df = pd.read_excel(f, engine="openpyxl")
-    else:
-        try:
-            df = pd.read_csv(f, encoding="utf-8")
-        except UnicodeDecodeError:
-            f.seek(0)
-            df = pd.read_csv(f, encoding="latin1")
-
-    if len(df) > MAX_IMPORT_ROWS:
-        return json_error(f"Archivo supera el máximo de filas permitidas ({MAX_IMPORT_ROWS})", 413)
-
-    def norm(s):
-        return (str(s).strip().lower()
-                .replace("á","a").replace("é","e").replace("í","i")
-                .replace("ó","o").replace("ú","u").replace("ü","u"))
-
-    colmap = {norm(c): c for c in df.columns}
-    wants = {
-        "inicial": ["inicial","inicio","fecha inicial","start","startdate"],
-        "final":   ["final","fin","fecha final","end","enddate"],
-        "numero":  ["#","num","numero","no","id","employee id","empleado"],
-        "nombre":  ["nombre","name","empleado nombre"],
-        "gozo":    ["gozo","dias","dias gozo","days"],
-        "planta":  ["planta","plant","site","sede"],
-    }
-
-    def find_col(keys):
-        for k in keys:
-            k2 = norm(k)
-            if k2 in colmap: return colmap[k2]
-        for nk, orig in colmap.items():
-            for k in keys:
-                if nk.startswith(norm(k)): return orig
-        return None
-
-    c_inicial = find_col(wants["inicial"])
-    c_final   = find_col(wants["final"])
-    c_num     = find_col(wants["numero"])
-    c_nombre  = find_col(wants["nombre"])
-    c_gozo    = find_col(wants["gozo"])
-    c_planta  = find_col(wants["planta"])
-
-    missing = [lbl for lbl, col in [("Inicial", c_inicial), ("Final", c_final), ("#", c_num), ("Nombre", c_nombre)] if col is None]
-    if missing:
-        return json_error(f"Columnas requeridas faltantes: {', '.join(missing)}", 400)
-
-    db = SessionLocal()
-    creados_empleados = 0
-    creadas_vac = 0
-    rechazadas = 0
-    errores = []
-
-    for idx, row in df.iterrows():
-        try:
-            ini = parse_date(str(row[c_inicial])); fin = parse_date(str(row[c_final]))
-            if not ini or not fin or fin < ini:
-                rechazadas += 1; errores.append(f"Row {idx+1}: rango de fecha inválido"); continue
-
-            numero = str(row[c_num]).strip()
-            raw_nombre = str(row[c_nombre]).strip()
-            if not numero or not raw_nombre:
-                rechazadas += 1; errores.append(f"Row {idx+1}: número/nombre vacío"); continue
-
-            nombre = canonicalize_nombre(raw_nombre)
-            nombre_corto = derive_nombre_corto(nombre)
-
-            gozo = None
-            if c_gozo is not None and pd.notna(row[c_gozo]):
-                try: gozo = float(row[c_gozo])
-                except Exception: gozo = None
-
-            if c_planta is not None and pd.notna(row[c_planta]):
-                planta = normalize_planta(row[c_planta])
-            else:
-                planta = "Planta 1"
-
-            e = db.execute(select(Empleado).where(Empleado.numero_emp == numero)).scalar_one_or_none()
-            if not e:
-                e = Empleado(
-                    numero_emp=numero, nombre=nombre, nombre_corto=nombre_corto,
-                    planta=planta, turno=random.choice(["T1","T2","T3"]), activo=True
-                )
-                db.add(e); db.flush()
-                creados_empleados += 1
-            else:
-                if nombre and nombre != e.nombre:
-                    e.nombre = nombre
-                    e.nombre_corto = derive_nombre_corto(nombre)
-                if planta and planta != e.planta:
-                    e.planta = planta
-
-            v = Vacacion(
-                empleado_id=e.id,
-                fecha_inicial=ini,
-                fecha_final=fin,
-                tipo="Gozo de Vacaciones",
-                gozo=gozo,
-                fuente="excel",
-            )
-            db.add(v); creadas_vac += 1
-        except Exception as ex:
-            traceback.print_exc()
-            rechazadas += 1
-            errores.append(f"Row {idx+1}: {type(ex).__name__}")
-
-    db.commit(); db.close()
-    return json_ok(empleados_creados=creados_empleados, vacaciones_creadas=creadas_vac, rechazadas=rechazadas, errores=errores[:20])
+@app.route("/<path:path>")
+def serve_static_files(path):
+    # No interceptar /api/*
+    if path.startswith("api/"):
+        abort(404)
+    return send_from_directory(WEB_DIR, path)
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5000"))

@@ -1,7 +1,7 @@
 // web/js/api.js
 // Base de API: usa window.API_BASE si está definida ANTES de cargar este archivo.
 // De lo contrario, usa http://localhost:5000 (Flask por defecto).
-const API_BASE = (window.API_BASE || "http://localhost:5000").replace(/\/$/, "");
+const API_BASE = (window.API_BASE ?? window.location.origin).replace(/\/$/, "");
 
 const API = {
   async calendario(start,end,params={}){
