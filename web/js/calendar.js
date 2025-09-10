@@ -3,12 +3,10 @@ const grid2 = document.getElementById("grid_w2");
 const lbl1 = document.getElementById("lbl_w1");
 const lbl2 = document.getElementById("lbl_w2");
 const f_planta = document.getElementById("f_planta");
-const q = document.getElementById("q");
 const btnPrev = document.getElementById("btnPrev");
 const btnNext = document.getElementById("btnNext");
-const btnToday = document.getElementById("btnToday"); // NUEVO
+const btnToday = document.getElementById("btnToday");
 const lblAnchor = document.getElementById("lblAnchor");
-const btnPause = document.getElementById("btnPause");
 const btnFull = document.getElementById("btnFull");
 const clockEl = document.getElementById("clock");
 
@@ -17,7 +15,7 @@ const STATE_KEY = "vacaciones.ui";
 
 // Paginación & rotación
 const PAGE_SIZE = 3;
-const ROTATE_MS = 30000;
+const ROTATE_MS = 15000;
 const FADE_MS = 450;
 
 // Estado
@@ -27,14 +25,13 @@ let itemsByDay2 = {};
 let offsets1 = {};
 let offsets2 = {};
 let rotateTimer = null;
-let paused = false;
 
 // --------- Utils de estado ----------
 function anchorLabel(d){ const {start,end}=weekRange(d); return `${fmtISO(start)} → ${fmtISO(end)}`; }
 
 function saveState() {
   try {
-    const state = { planta: f_planta.value||"", q: q.value||"", anchor: fmtISO(anchor), paused };
+    const state = { planta: f_planta.value||"", anchor: fmtISO(anchor) };
     localStorage.setItem(STATE_KEY, JSON.stringify(state));
   } catch {}
 }
@@ -45,23 +42,15 @@ function loadState() {
     if (!raw) return;
     const st = JSON.parse(raw);
     if (st.planta != null) f_planta.value = st.planta;
-    if (st.q != null) q.value = st.q;
     if (st.anchor) {
       const d = new Date(st.anchor);
       if (!isNaN(d.getTime())) anchor = d;
     }
-    if (typeof st.paused === "boolean") paused = st.paused;
-    updatePauseUI();
   } catch {}
 }
 
-// Reloj y demás utilidades… (igual)
-
 // ---- Botón HOY: lleva el ancla a la semana de hoy
 btnToday.onclick = () => { anchor = new Date(); saveState(); render(); };
-
-// … resto del archivo igual que tu versión anterior …
-
 
 // --------- Reloj (TV) ----------
 function startClock(){
@@ -172,7 +161,7 @@ async function fetchAndRender() {
   lbl1.textContent = `Semana (${fmtISO(w1.start)} → ${fmtISO(w1.end)})`;
   lbl2.textContent = `Semana siguiente (${fmtISO(w2.start)} → ${fmtISO(w2.end)})`;
 
-  const params = { planta: f_planta.value, q: q.value };
+  const params = { planta: f_planta.value };
 
   const [d1, d2] = await Promise.all([
     API.calendario(fmtISO(w1.start), fmtISO(w1.end), params),
@@ -193,11 +182,10 @@ async function render(){
   saveState();
 }
 
-// Rotación periódica (con pausa)
+// Rotación periódica (siempre activa; sin pausa)
 function startRotation() {
   if (rotateTimer) clearInterval(rotateTimer);
   rotateTimer = setInterval(() => {
-    if (paused) return;
     const w1 = weekRange(anchor);
     const w2 = nextWeekRange(anchor);
     advanceOffsets(itemsByDay1, offsets1);
@@ -207,32 +195,25 @@ function startRotation() {
   }, ROTATE_MS);
 }
 
-function updatePauseUI(){
-  btnPause.textContent = paused ? "▶" : "⏸";
-}
-
 // Navegación & filtros
 btnPrev.onclick = () => { anchor = addDays(anchor, -7); saveState(); render(); };
 btnNext.onclick = () => { anchor = addDays(anchor,  7); saveState(); render(); };
-[f_planta, q].forEach(el => el.addEventListener('input', () => { saveState(); render(); }));
+f_planta.addEventListener('input', () => { saveState(); render(); });
 
-btnPause.onclick = () => { paused = !paused; updatePauseUI(); saveState(); };
 btnFull.onclick = () => toggleFullscreen();
 
-// Atajos de teclado
+// Atajos de teclado (solo fullscreen)
 window.addEventListener("keydown", (e)=>{
-  if (e.key === " "){ paused = !paused; updatePauseUI(); saveState(); e.preventDefault(); }
   if (e.key.toLowerCase() === "f"){ toggleFullscreen(); }
 });
 
 // Inicial
 loadState();
-updatePauseUI();
 startClock();
 render();
 startRotation();
 
-// Auto-refresh de datos cada 5 min (mantiene filtros/anchor/pausa)
+// Auto-refresh de datos cada 5 min (mantiene filtros/anchor)
 setInterval(async () => {
   await fetchAndRender();
 }, 5*60*1000);

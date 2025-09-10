@@ -1,6 +1,7 @@
 :root {
   --bg:#0b1530; --card:#111e45; --text:#eaf0ff; --muted:#9eb3ff; --accent:#00A0DF; --border:#22306b;
   --soft:#0b1a3a; --shadow: 0 4px 16px rgba(0,0,0,.25);
+  --tech:#2EFAD9; /* Technology Blue */
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -38,6 +39,14 @@ h1{margin:0;font-size:28px; letter-spacing:.5px}
   box-shadow: var(--shadow);
 }
 #clock{font-size:18px; opacity:.85}
+
+/* Logo + marca */
+header .brand {
+  display:flex; align-items:center; gap:10px;
+}
+header .brand img {
+  height:28px; width:auto; display:block; filter: drop-shadow(0 2px 6px rgba(0,0,0,.3));
+}
 
 /* Ocultar controles por inactividad SOLO en TV */
 body.tv.inactive header .controls{opacity:0; transition:opacity .3s}
