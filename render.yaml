@@ -21,6 +21,3 @@ services:
       - key: APP_VERSION
         value: "1.2.1-ordering+ui"
 
-databases:
-  - name: vacaciones-db
-    plan: free
