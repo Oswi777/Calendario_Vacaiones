@@ -3,7 +3,7 @@ services:
     name: vacaciones-api
     env: python
     plan: free
-    buildCommand: pip install -r api/requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: cd api && gunicorn app:app -w 2 -k gthread -t 120 -b 0.0.0.0:$PORT
     autoDeploy: true
     envVars:
@@ -21,6 +21,3 @@ services:
       - key: APP_VERSION
         value: "1.2.1-ordering+ui"
 
-databases:
-  - name: vacaciones-db
-    plan: free
