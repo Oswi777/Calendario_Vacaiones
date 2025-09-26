@@ -15,8 +15,9 @@ const STATE_KEY = "vacaciones.ui";
 
 // Paginación & rotación
 const PAGE_SIZE = 3;
-const ROTATE_MS = 15000;
+const ROTATE_MS = 15000; // 15s
 const FADE_MS = 450;
+const HARD_REFRESH_MS = 10 * 60 * 1000; // 10 min (red de seguridad)
 
 // Estado
 let anchor = new Date();
@@ -25,8 +26,9 @@ let itemsByDay2 = {};
 let offsets1 = {};
 let offsets2 = {};
 let rotateTimer = null;
+let hardRefreshTimer = null;
 
-// --------- Utils de estado ----------
+// --------- Utils ----------
 function anchorLabel(d){ const {start,end}=weekRange(d); return `${fmtISO(start)} → ${fmtISO(end)}`; }
 
 function saveState() {
@@ -49,10 +51,10 @@ function loadState() {
   } catch {}
 }
 
-// ---- Botón HOY: lleva el ancla a la semana de hoy
+// ---- Botón HOY
 btnToday.onclick = () => { anchor = new Date(); saveState(); render(); };
 
-// --------- Reloj (TV) ----------
+// --------- Reloj ----------
 function startClock(){
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const tick = () => {
@@ -63,7 +65,7 @@ function startClock(){
   tick(); setInterval(tick, 1000);
 }
 
-// --------- Inactividad: oculta controles (modo TV) ----------
+// --------- Inactividad (TV) ----------
 let lastMoveTs = Date.now();
 function markActive(){ lastMoveTs = Date.now(); document.body.classList.remove("inactive"); }
 ["mousemove","keydown","mousedown","touchstart"].forEach(ev=>{
@@ -152,15 +154,10 @@ function advanceOffsets(itemsMap, offsetsMap) {
   });
 }
 
-// Pide data y dibuja (primer render y al navegar/filtros)
-async function fetchAndRender() {
+// --- Descarga datos SIN pintar (cache-busted) ---
+async function fetchDataOnly() {
   const w1 = weekRange(anchor);
   const w2 = nextWeekRange(anchor);
-
-  lblAnchor.textContent = anchorLabel(anchor);
-  lbl1.textContent = `Semana (${fmtISO(w1.start)} → ${fmtISO(w1.end)})`;
-  lbl2.textContent = `Semana siguiente (${fmtISO(w2.start)} → ${fmtISO(w2.end)})`;
-
   const params = { planta: f_planta.value };
 
   const [d1, d2] = await Promise.all([
@@ -170,8 +167,20 @@ async function fetchAndRender() {
 
   itemsByDay1 = buildMap(d1, w1.start);
   itemsByDay2 = buildMap(d2, w2.start);
-  offsets1 = {}; offsets2 = {};
+}
 
+// Pide data y dibuja (primer render y al navegar/filtros)
+async function fetchAndRender() {
+  const w1 = weekRange(anchor);
+  const w2 = nextWeekRange(anchor);
+
+  lblAnchor.textContent = anchorLabel(anchor);
+  lbl1.textContent = `Semana (${fmtISO(w1.start)} → ${fmtISO(w1.end)})`;
+  lbl2.textContent = `Semana siguiente (${fmtISO(w2.start)} → ${fmtISO(w2.end)})`;
+
+  await fetchDataOnly();
+  // Reset offsets al cambiar filtros/anchor
+  offsets1 = {}; offsets2 = {};
   paintGrid(grid1, w1.start, itemsByDay1, offsets1);
   paintGrid(grid2, w2.start, itemsByDay2, offsets2);
 }
@@ -182,17 +191,32 @@ async function render(){
   saveState();
 }
 
-// Rotación periódica (siempre activa; sin pausa)
+// Rotación periódica: re-fetch + rotate + repaint
 function startRotation() {
   if (rotateTimer) clearInterval(rotateTimer);
-  rotateTimer = setInterval(() => {
+  rotateTimer = setInterval(async () => {
     const w1 = weekRange(anchor);
     const w2 = nextWeekRange(anchor);
+
+    // 1) trae datos frescos (sin caché)
+    await fetchDataOnly();
+
+    // 2) avanza paginación por día
     advanceOffsets(itemsByDay1, offsets1);
     advanceOffsets(itemsByDay2, offsets2);
+
+    // 3) repinta con fade
     animateRepaint(grid1, () => paintGrid(grid1, w1.start, itemsByDay1, offsets1));
     animateRepaint(grid2, () => paintGrid(grid2, w2.start, itemsByDay2, offsets2));
   }, ROTATE_MS);
+}
+
+// Red de seguridad: hard refresh de página cada 10 min
+function startHardRefresh() {
+  if (hardRefreshTimer) clearInterval(hardRefreshTimer);
+  hardRefreshTimer = setInterval(() => {
+    location.reload();
+  }, HARD_REFRESH_MS);
 }
 
 // Navegación & filtros
@@ -212,8 +236,4 @@ loadState();
 startClock();
 render();
 startRotation();
-
-// Auto-refresh de datos cada 5 min (mantiene filtros/anchor)
-setInterval(async () => {
-  await fetchAndRender();
-}, 5*60*1000);
+startHardRefresh();
