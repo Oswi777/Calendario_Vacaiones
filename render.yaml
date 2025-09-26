@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: vacaciones-api
+    env: python
+    plan: free
+    buildCommand: pip install -r api/requirements.txt
+    startCommand: cd api && gunicorn app:app -w 2 -k gthread -t 120 -b 0.0.0.0:$PORT
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: vacaciones-db
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      # Opcionales de tu app
+      - key: MAX_CAL_DAYS
+        value: "90"
+      - key: MAX_IMPORT_ROWS
+        value: "5000"
+      - key: APP_VERSION
+        value: "1.2.1-ordering+ui"
+
+databases:
+  - name: vacaciones-db
+    plan: free

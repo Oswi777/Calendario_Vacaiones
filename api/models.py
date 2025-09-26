@@ -5,11 +5,18 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 import os
 
+# ---------- Configuración de conexión ----------
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///vacaciones.db")
+
+# Render a veces expone postgres:// en lugar de postgresql+psycopg2://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+
 engine = create_engine(DATABASE_URL, future=True)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, future=True)
 Base = declarative_base()
 
+# ---------- Modelos ----------
 class Empleado(Base):
     __tablename__ = "empleados"
     id = Column(Integer, primary_key=True)
@@ -21,6 +28,9 @@ class Empleado(Base):
     planta = Column(String(16))        # "Planta 1" / "Planta 3"
     foto_url = Column(Text)
     activo = Column(Boolean, default=True)
+
+    def __repr__(self):
+        return f"<Empleado id={self.id} num={self.numero_emp} nombre={self.nombre}>"
 
 class Vacacion(Base):
     __tablename__ = "vacaciones"
@@ -34,5 +44,10 @@ class Vacacion(Base):
 
     empleado = relationship("Empleado")
 
+    def __repr__(self):
+        return f"<Vacacion id={self.id} emp={self.empleado_id} {self.fecha_inicial}→{self.fecha_final}>"
+
+# ---------- Inicialización ----------
 def init_db():
+    """Crea las tablas en la base de datos si no existen."""
     Base.metadata.create_all(engine)
