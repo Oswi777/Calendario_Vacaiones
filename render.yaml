@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: vacaciones-api
+    name: vacaciones-web
     env: python
     plan: free
     buildCommand: pip install -r api/requirements.txt
@@ -8,16 +8,12 @@ services:
     autoDeploy: true
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: vacaciones-db
-          property: connectionString
+        sync: false   # la configuras manualmente en el dashboard de Render
       - key: PYTHON_VERSION
         value: 3.12.3
-      # Opcionales de tu app
       - key: MAX_CAL_DAYS
         value: "90"
       - key: MAX_IMPORT_ROWS
         value: "5000"
       - key: APP_VERSION
         value: "1.2.1-ordering+ui"
-
