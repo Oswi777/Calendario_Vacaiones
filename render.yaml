@@ -3,7 +3,7 @@ services:
     name: vacaciones-web
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r /requirements.txt
     startCommand: cd api && gunicorn app:app -w 2 -k gthread -t 120 -b 0.0.0.0:$PORT
     autoDeploy: true
     envVars:
@@ -17,7 +17,3 @@ services:
         value: "5000"
       - key: APP_VERSION
         value: "1.2.1-ordering+ui"
-<<<<<<< HEAD
-
-=======
->>>>>>> 33e5ce59873dfa8d89dfc8f3a7533cf0250a6ba2
